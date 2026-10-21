@@ -6,36 +6,78 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
+import { login } from "../../services/auth.service";
+
+import { isRequired, isValidEmail } from "../../utils/validation";
+
 import { COLORS } from "../../theme/colors";
 import { authStyles as styles } from "../../styles/auth.styles";
+
+import AppTextInput from "../../components/ui/AppTextInput";
+import AppButton from "../../components/ui/AppButton";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin() {
-    if (!email.trim() || !password.trim()) {
+  async function handleLogin() {
+    if (loading) return;
+
+    if (!isRequired(email) || !isRequired(password)) {
       Alert.alert("Atenção", "Preencha o e-mail e a palavra-passe.");
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!isValidEmail(email)) {
       Alert.alert("Atenção", "Introduza um e-mail válido.");
       return;
     }
 
-    Alert.alert(
-      "Login",
-      "Interface validada! A autenticação será integrada com a API na próxima etapa.",
-    );
+    try {
+      setLoading(true);
+
+      await login({
+        email: email.trim(),
+        password,
+      });
+
+      Alert.alert("Autenticação", "Login efectuado com sucesso!");
+    } catch (error) {
+      if (error instanceof Error) {
+        switch (error.message) {
+          case "Invalid email or password":
+            Alert.alert(
+              "Erro de autenticação",
+              "E-mail ou palavra-passe incorrectos.",
+            );
+            break;
+
+          case "Too many login attempts. Please try again later.":
+            Alert.alert(
+              "Limite excedido",
+              "Demasiadas tentativas. Tente novamente mais tarde.",
+            );
+            break;
+
+          default:
+            Alert.alert(
+              "Erro",
+              "Não foi possível iniciar sessão. Tente novamente.",
+            );
+        }
+      } else {
+        Alert.alert("Erro", "Ocorreu um erro inesperado.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -58,69 +100,29 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>E-mail</Text>
+          <AppTextInput
+            label="E-mail"
+            icon="mail-outline"
+            placeholder="Digite seu e-mail"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            autoComplete="email"
+            value={email}
+            onChangeText={setEmail}
+          />
 
-          <View style={styles.inputContainer}>
-            <Ionicons
-              name="mail-outline"
-              size={20}
-              color={COLORS.textSecondary}
-            />
+          <AppTextInput
+            label="Palavra-passe"
+            icon="lock-closed-outline"
+            placeholder="Digite sua palavra-passe"
+            autoComplete="password"
+            isPassword
+            value={password}
+            onChangeText={setPassword}
+          />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Digite seu e-mail"
-              placeholderTextColor={COLORS.placeholder}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              autoComplete="email"
-              value={email}
-              onChangeText={setEmail}
-            />
-          </View>
-
-          <Text style={styles.label}>Palavra-passe</Text>
-
-          <View style={styles.inputContainer}>
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={COLORS.textSecondary}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Digite sua palavra-passe"
-              placeholderTextColor={COLORS.placeholder}
-              secureTextEntry={!showPassword}
-              autoComplete="password"
-              value={password}
-              onChangeText={setPassword}
-            />
-
-            <Pressable
-              onPress={() => setShowPassword((previous) => !previous)}
-              accessibilityRole="button"
-              accessibilityLabel={
-                showPassword ? "Ocultar palavra-passe" : "Mostrar palavra-passe"
-              }
-            >
-              <Ionicons
-                name={showPassword ? "eye-off-outline" : "eye-outline"}
-                size={21}
-                color={COLORS.textSecondary}
-              />
-            </Pressable>
-          </View>
-
-          <Pressable
-            style={styles.loginButton}
-            onPress={handleLogin}
-            accessibilityRole="button"
-          >
-            <Text style={styles.loginButtonText}>Entrar</Text>
-          </Pressable>
+          <AppButton title="Entrar" onPress={handleLogin} loading={loading} />
 
           <View style={styles.registerContainer}>
             <Text style={styles.registerText}>Ainda não tem uma conta?</Text>
