@@ -86,4 +86,7 @@ export const authStyles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     fontWeight: "700",
   },
+  registerBrand: {
+  marginBottom: 28,
+},
 });
