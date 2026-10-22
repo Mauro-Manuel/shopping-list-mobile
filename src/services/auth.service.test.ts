@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.stubEnv("EXPO_PUBLIC_API_URL", "http://localhost:8080");
-
-const { login } = await import("./auth.service");
+import { API_BASE_URL } from "../config/api";
+import { login, refreshToken } from "./auth.service";
 
 describe("Auth service", () => {
   afterEach(() => {
@@ -93,5 +92,59 @@ describe("Auth service", () => {
         password: "12345678",
       }),
     ).rejects.toThrow("Authentication failed");
+  });
+
+  it("should refresh the access token successfully", async () => {
+    // Arrange
+    const refreshTokenValue = "valid-refresh-token";
+
+    const response = {
+      accessToken: "new-access-token",
+      refreshToken: "new-refresh-token",
+      tokenType: "Bearer",
+      expiresIn: 900,
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => response,
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Act
+    const result = await refreshToken(refreshTokenValue);
+
+    // Assert
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${API_BASE_URL}/api/v1/auth/refresh`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          refreshToken: refreshTokenValue,
+        }),
+      },
+    );
+
+    expect(result).toEqual(response);
+  });
+
+  it("should reject an invalid refresh token with HTTP 401", async () => {
+    // Arrange
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Act & Assert
+    await expect(refreshToken("invalid-refresh-token")).rejects.toThrow(
+      "Invalid or expired refresh token",
+    );
   });
 });

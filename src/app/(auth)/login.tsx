@@ -12,7 +12,7 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { login } from "../../services/auth.service";
+import { useAuth } from "../../contexts/AuthProvider";
 
 import { isRequired, isValidEmail } from "../../utils/validation";
 
@@ -23,6 +23,8 @@ import AppTextInput from "../../components/ui/AppTextInput";
 import AppButton from "../../components/ui/AppButton";
 
 export default function LoginScreen() {
+  const { signIn } = useAuth();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,10 +45,12 @@ export default function LoginScreen() {
     try {
       setLoading(true);
 
-      await login({
+      await signIn({
         email: email.trim(),
         password,
       });
+
+      router.replace("/(tabs)");
 
       Alert.alert("Autenticação", "Login efectuado com sucesso!");
     } catch (error) {
