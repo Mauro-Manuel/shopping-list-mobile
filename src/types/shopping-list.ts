@@ -30,7 +30,7 @@ export type ShoppingListItem = {
   category: {
     id: number;
     name: string;
-    icon: string;
+    icon: string | null;
   };
   quantity: number;
   unit: string;

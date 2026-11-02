@@ -10,6 +10,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AddShoppingItemModal from "../../../components/shopping-list/AddShoppingItemModal";
 
 import { getShoppingListById } from "../../../services/shopping-list.service";
 import type {
@@ -24,6 +25,7 @@ export default function ShoppingListDetailsScreen() {
   const [list, setList] = useState<ShoppingListDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addModalVisible, setAddModalVisible] = useState(false);
 
   const loadDetails = useCallback(async () => {
     const id = Number(listId);
@@ -122,9 +124,7 @@ export default function ShoppingListDetailsScreen() {
               </View>
 
               <Text style={styles.status}>
-                {list.status === "ACTIVE"
-                  ? "Em andamento"
-                  : "Concluída"}
+                {list.status === "ACTIVE" ? "Em andamento" : "Concluída"}
               </Text>
             </View>
 
@@ -155,9 +155,7 @@ export default function ShoppingListDetailsScreen() {
             {list.status === "ACTIVE" && (
               <Pressable
                 style={styles.addButton}
-                onPress={() => {
-                  // Integraremos a adição de produtos na próxima etapa.
-                }}
+                onPress={() => setAddModalVisible(true)}
               >
                 <Ionicons name="add" size={23} color="#FFFFFF" />
                 <Text style={styles.addButtonText}>Adicionar Produto</Text>
@@ -166,6 +164,12 @@ export default function ShoppingListDetailsScreen() {
           </>
         ) : null}
       </View>
+      <AddShoppingItemModal
+        visible={addModalVisible}
+        listId={Number(listId)}
+        onClose={() => setAddModalVisible(false)}
+        onAdded={() => void loadDetails()}
+      />
     </SafeAreaView>
   );
 }
