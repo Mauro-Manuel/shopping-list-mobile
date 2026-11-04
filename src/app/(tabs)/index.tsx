@@ -145,11 +145,28 @@ export default function HomeScreen() {
         accessibilityRole="button"
       >
         <View style={styles.listHeader}>
-          <View style={styles.listTitleContainer}>
-            <Text style={styles.listName}>{item.name}</Text>
-            <Text style={styles.listInfo}>
-              {item.checkedItems} de {item.totalItems} produtos comprados
-            </Text>
+          <View style={styles.listTitleRow}>
+            <View style={styles.listIconContainer}>
+              <Ionicons
+                name={
+                  item.status === "COMPLETED"
+                    ? "checkmark-circle"
+                    : "basket-outline"
+                }
+                size={25}
+                color={COLORS.primary}
+              />
+            </View>
+
+            <View style={styles.listTitleContainer}>
+              <Text style={styles.listName} numberOfLines={2}>
+                {item.name}
+              </Text>
+
+              <Text style={styles.listInfo}>
+                {item.checkedItems} de {item.totalItems} produtos comprados
+              </Text>
+            </View>
           </View>
           <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
         </View>
@@ -520,4 +537,19 @@ const styles = StyleSheet.create({
   createButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "600" },
   cancelButton: { alignItems: "center", paddingVertical: 16, marginTop: 4 },
   cancelText: { color: "#6B7280", fontSize: 15 },
+  listTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+
+  listIconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: "#E9F8F1",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
 });

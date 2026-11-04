@@ -98,4 +98,110 @@ export async function createShoppingList(
   return response.json();
 }
 
+export async function renameShoppingList(
+  listId: number,
+  name: string,
+): Promise<void> {
+  const trimmedName = name.trim();
 
+  if (!trimmedName) {
+    throw new Error("Shopping list name is required");
+  }
+
+  const headers = await getAuthorizationHeaders();
+
+  const response = await fetch(
+    `${SHOPPING_LIST_URL}/${listId}`,
+    {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ name: trimmedName }),
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping list not found");
+  }
+
+  if (response.status === 400 || response.status === 422) {
+    throw new Error("Invalid shopping list name");
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to rename shopping list: ${response.status}`,
+    );
+  }
+}
+
+
+export async function completeShoppingList(
+  listId: number,
+): Promise<void> {
+  const headers = await getAuthorizationHeaders();
+
+  const response = await fetch(
+    `${SHOPPING_LIST_URL}/${listId}/complete`,
+    {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping list not found");
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to complete shopping list: ${response.status}`,
+    );
+  }
+}
+
+export async function reopenShoppingList(
+  listId: number,
+): Promise<void> {
+  const headers = await getAuthorizationHeaders();
+
+  const response = await fetch(
+    `${SHOPPING_LIST_URL}/${listId}/reopen`,
+    {
+      method: "PATCH",
+      headers,
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping list not found");
+  }
+
+  if (response.status === 409) {
+    throw new Error("Shopping list cannot be reopened");
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to reopen shopping list: ${response.status}`,
+    );
+  }
+}

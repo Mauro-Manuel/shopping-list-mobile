@@ -9,3 +9,7 @@ export const UNITS = [
 ] as const;
 
 export type Unit = (typeof UNITS)[number]["value"];
+
+export function getUnitLabel(unit: Unit): string {
+  return UNITS.find((item) => item.value === unit)?.label ?? unit;
+}
