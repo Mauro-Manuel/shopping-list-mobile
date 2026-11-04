@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "../config/api";
 import { getAuthTokens } from "./auth.storage";
+import type { Unit } from "../types/unit";
 
 export type AddShoppingItemRequest = {
   productId?: number;
@@ -8,7 +9,12 @@ export type AddShoppingItemRequest = {
     categoryId: number;
   };
   quantity: number;
-  unit: string;
+  unit: Unit;
+};
+
+export type UpdateShoppingItemRequest = {
+  quantity: number;
+  unit: Unit;
 };
 
 export class ShoppingItemConflictError extends Error {
@@ -60,5 +66,152 @@ export async function addShoppingItem(
     });
 
     throw new Error("Failed to add shopping item");
+  }
+}
+
+export async function checkShoppingItem(
+  listId: number,
+  itemId: number,
+): Promise<void> {
+  const tokens = await getAuthTokens();
+
+  if (!tokens) {
+    throw new Error("Authentication required");
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}/check`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping item not found");
+  }
+
+  if (response.status === 409) {
+    throw new Error("Shopping item conflict");
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to check shopping item: ${response.status}`);
+  }
+}
+
+export async function uncheckShoppingItem(
+  listId: number,
+  itemId: number,
+): Promise<void> {
+  const tokens = await getAuthTokens();
+
+  if (!tokens) {
+    throw new Error("Authentication required");
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}/uncheck`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping item not found");
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to uncheck shopping item: ${response.status}`);
+  }
+}
+
+export async function updateShoppingItem(
+  listId: number,
+  itemId: number,
+  request: UpdateShoppingItemRequest,
+): Promise<void> {
+  const tokens = await getAuthTokens();
+
+  if (!tokens) {
+    throw new Error("Authentication required");
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(request),
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping item not found");
+  }
+
+  if (response.status === 400 || response.status === 422) {
+    throw new Error("Invalid shopping item data");
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to update shopping item: ${response.status}`);
+  }
+}
+
+export async function deleteShoppingItem(
+  listId: number,
+  itemId: number,
+): Promise<void> {
+  const tokens = await getAuthTokens();
+
+  if (!tokens) {
+    throw new Error("Authentication required");
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping item not found");
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete shopping item: ${response.status}`);
   }
 }

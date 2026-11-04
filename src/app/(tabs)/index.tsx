@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "../../contexts/AuthProvider";
@@ -52,9 +52,11 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadLists();
-  }, [loadLists]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadLists();
+    }, [loadLists]),
+  );
 
   useEffect(() => {
     let active = true;
