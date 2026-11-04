@@ -13,10 +13,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AddShoppingItemModal from "../../../components/shopping-list/AddShoppingItemModal";
+import EditShoppingItemModal from "../../../components/shopping-list/EditShoppingItemModal";
 import { getShoppingListById } from "../../../services/shopping-list.service";
+
 import {
   checkShoppingItem,
   uncheckShoppingItem,
+  deleteShoppingItem,
 } from "../../../services/shopping-item.service";
 import type {
   ShoppingListDetails,
@@ -31,6 +34,8 @@ export default function ShoppingListDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [checkingItemId, setCheckingItemId] = useState<number | null>(null);
+  const [editingItem, setEditingItem] = useState<ShoppingListItem | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const checkingRef = useRef(false);
 
   const loadDetails = useCallback(
@@ -89,9 +94,64 @@ export default function ShoppingListDetailsScreen() {
     }
   }
 
+  function handleDeleteItem(item: ShoppingListItem) {
+    if (
+      !list ||
+      list.status !== "ACTIVE" ||
+      deletingItemId !== null ||
+      checkingItemId !== null
+    ) {
+      return;
+    }
+
+    Alert.alert(
+      "Remover produto",
+      `Tens a certeza de que queres remover "${item.product.name}" desta lista?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Remover",
+          style: "destructive",
+          onPress: () => {
+            void confirmDeleteItem(item.id);
+          },
+        },
+      ],
+    );
+  }
+
+  async function confirmDeleteItem(itemId: number) {
+    if (!list || deletingItemId !== null) return;
+
+    try {
+      setDeletingItemId(itemId);
+
+      await deleteShoppingItem(list.id, itemId);
+
+      await loadDetails();
+    } catch (error) {
+      console.error("Failed to delete shopping item:", error);
+
+      Alert.alert(
+        "Erro",
+        "Não foi possível remover o produto. Tenta novamente.",
+      );
+    } finally {
+      setDeletingItemId(null);
+    }
+  }
+
   function renderItem({ item }: { item: ShoppingListItem }) {
     const isUpdating = checkingItemId === item.id;
-    const isDisabled = checkingItemId !== null || list?.status !== "ACTIVE";
+    const isDeleting = deletingItemId === item.id;
+
+    const isDisabled =
+      checkingItemId !== null ||
+      deletingItemId !== null ||
+      list?.status !== "ACTIVE";
 
     return (
       <Pressable
@@ -118,22 +178,67 @@ export default function ShoppingListDetailsScreen() {
         )}
 
         <View style={styles.itemInfo}>
-          <Text
-            style={[styles.itemName, item.checked && styles.checkedItemName]}
-          >
-            {item.product.name}
-          </Text>
+          <View style={styles.itemDetails}>
+            <View style={styles.itemTextContainer}>
+              <Text
+                style={[
+                  styles.itemName,
+                  item.checked && styles.checkedItemName,
+                ]}
+              >
+                {item.product.name}
+              </Text>
 
-          <Text style={styles.itemSubtitle}>
-            {item.quantity} {item.unit} · {item.category.name}
-          </Text>
+              <Text style={styles.itemSubtitle}>
+                {item.quantity} {item.unit} · {item.category.name}
+              </Text>
+            </View>
+
+            <View style={styles.itemActions}>
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation();
+                  setEditingItem(item);
+                }}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={`Editar ${item.product.name}`}
+                style={styles.actionButton}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={22}
+                  color={COLORS.primary}
+                />
+              </Pressable>
+
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation();
+                  handleDeleteItem(item);
+                }}
+                disabled={isDisabled}
+                accessibilityRole="button"
+                accessibilityLabel={`Remover ${item.product.name}`}
+                style={styles.actionButton}
+                hitSlop={8}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <Ionicons name="trash-outline" size={22} color="#DC2626" />
+                )}
+              </Pressable>
+            </View>
+          </View>
         </View>
       </Pressable>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <View style={styles.container}>
         <View style={styles.header}>
           <Pressable
@@ -143,20 +248,24 @@ export default function ShoppingListDetailsScreen() {
           >
             <Ionicons name="arrow-back" size={26} color="#111827" />
           </Pressable>
+
           <Text style={styles.headerTitle}>Detalhes da Lista</Text>
         </View>
 
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={COLORS.primary} />
+
             <Text style={styles.message}>A carregar lista...</Text>
           </View>
         ) : error ? (
           <View style={styles.center}>
             <Text style={styles.message}>{error}</Text>
+
             <Pressable
               onPress={() => void loadDetails()}
               style={styles.retryButton}
+              accessibilityRole="button"
             >
               <Text style={styles.retryText}>Tentar novamente</Text>
             </Pressable>
@@ -165,17 +274,22 @@ export default function ShoppingListDetailsScreen() {
           <>
             <View style={styles.summary}>
               <Text style={styles.listName}>{list.name}</Text>
+
               <Text style={styles.progressLabel}>
                 {list.checkedItems} de {list.totalItems} produtos comprados
               </Text>
+
               <View style={styles.progressBackground}>
                 <View
                   style={[
                     styles.progressFill,
-                    { width: `${Math.min(100, Math.max(0, list.progress))}%` },
+                    {
+                      width: `${Math.min(100, Math.max(0, list.progress))}%`,
+                    },
                   ]}
                 />
               </View>
+
               <Text style={styles.status}>
                 {list.status === "ACTIVE" ? "Em andamento" : "Concluída"}
               </Text>
@@ -185,6 +299,7 @@ export default function ShoppingListDetailsScreen() {
               data={list.items}
               keyExtractor={(item) => String(item.id)}
               renderItem={renderItem}
+              showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
               ListEmptyComponent={
                 <View style={styles.center}>
@@ -193,9 +308,11 @@ export default function ShoppingListDetailsScreen() {
                     size={58}
                     color={COLORS.primary}
                   />
+
                   <Text style={styles.emptyTitle}>
                     Esta lista ainda está vazia
                   </Text>
+
                   <Text style={styles.message}>
                     Adiciona os produtos que precisas de comprar.
                   </Text>
@@ -207,9 +324,11 @@ export default function ShoppingListDetailsScreen() {
               <Pressable
                 style={styles.addButton}
                 onPress={() => setAddModalVisible(true)}
+                disabled={checkingItemId !== null || deletingItemId !== null}
                 accessibilityRole="button"
               >
                 <Ionicons name="add" size={23} color="#FFFFFF" />
+
                 <Text style={styles.addButtonText}>Adicionar Produto</Text>
               </Pressable>
             )}
@@ -222,6 +341,14 @@ export default function ShoppingListDetailsScreen() {
         listId={Number(listId)}
         onClose={() => setAddModalVisible(false)}
         onAdded={() => void loadDetails(false)}
+      />
+
+      <EditShoppingItemModal
+        visible={editingItem !== null}
+        listId={Number(listId)}
+        item={editingItem}
+        onClose={() => setEditingItem(null)}
+        onUpdated={() => void loadDetails(false)}
       />
     </SafeAreaView>
   );
@@ -309,5 +436,32 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  itemDetails: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  itemTextContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+
+  editButton: {
+    padding: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  itemActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  actionButton: {
+    padding: 4,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });
