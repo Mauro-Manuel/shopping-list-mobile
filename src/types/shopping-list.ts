@@ -1,3 +1,5 @@
+import type { Unit } from "./unit";
+
 export type ShoppingListStatus = "ACTIVE" | "COMPLETED";
 
 export type ShoppingListSummary = {
@@ -33,7 +35,7 @@ export type ShoppingListItem = {
     icon: string | null;
   };
   quantity: number;
-  unit: string;
+  unit: Unit;
   checked: boolean;
 };
 

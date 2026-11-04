@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import AddShoppingItemModal from "../../../components/shopping-list/AddShoppingItemModal";
 import EditShoppingItemModal from "../../../components/shopping-list/EditShoppingItemModal";
-import { getShoppingListById } from "../../../services/shopping-list.service";
+import RenameShoppingListModal from "../../../components/shopping-list/RenameShoppingListModal";
+import CompleteShoppingListModal from "../../../components/shopping-list/CompleteShoppingListModal";
+import {
+  getShoppingListById,
+  reopenShoppingList,
+} from "../../../services/shopping-list.service";
+import { getUnitLabel } from "../../../types/unit";
 
 import {
   checkShoppingItem,
@@ -36,7 +42,9 @@ export default function ShoppingListDetailsScreen() {
   const [checkingItemId, setCheckingItemId] = useState<number | null>(null);
   const [editingItem, setEditingItem] = useState<ShoppingListItem | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
-  const checkingRef = useRef(false);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [completeModalVisible, setCompleteModalVisible] = useState(false);
+  const [reopeningList, setReopeningList] = useState(false);
 
   const loadDetails = useCallback(
     async (showLoading = true) => {
@@ -68,7 +76,12 @@ export default function ShoppingListDetailsScreen() {
   }, [loadDetails]);
 
   async function handleCheckItem(item: ShoppingListItem) {
-    if (!list || checkingItemId !== null || list.status !== "ACTIVE") {
+    if (
+      !list ||
+      checkingItemId !== null ||
+      deletingItemId !== null ||
+      list.status !== "ACTIVE"
+    ) {
       return;
     }
 
@@ -144,6 +157,55 @@ export default function ShoppingListDetailsScreen() {
     }
   }
 
+  function handleReopenList() {
+    if (
+      !list ||
+      list.status !== "COMPLETED" ||
+      reopeningList ||
+      checkingItemId !== null ||
+      deletingItemId !== null
+    ) {
+      return;
+    }
+
+    const listIdToReopen = list.id;
+    const listName = list.name;
+
+    Alert.alert(
+      "Reabrir Lista",
+      `Queres reabrir a lista "${listName}" para continuar as compras?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Reabrir",
+          onPress: () => void confirmReopenList(listIdToReopen),
+        },
+      ],
+    );
+  }
+
+  async function confirmReopenList(listIdToReopen: number) {
+    if (reopeningList) return;
+
+    try {
+      setReopeningList(true);
+
+      await reopenShoppingList(listIdToReopen);
+      await loadDetails(false);
+
+      Alert.alert("Lista reaberta", "Já podes continuar as tuas compras.");
+    } catch (error) {
+      console.error("Failed to reopen shopping list:", error);
+
+      Alert.alert("Erro", "Não foi possível reabrir a lista. Tenta novamente.");
+    } finally {
+      setReopeningList(false);
+    }
+  }
+
   function renderItem({ item }: { item: ShoppingListItem }) {
     const isUpdating = checkingItemId === item.id;
     const isDeleting = deletingItemId === item.id;
@@ -190,47 +252,47 @@ export default function ShoppingListDetailsScreen() {
               </Text>
 
               <Text style={styles.itemSubtitle}>
-                {item.quantity} {item.unit} · {item.category.name}
+                {item.quantity} {getUnitLabel(item.unit)} · {item.category.name}
               </Text>
             </View>
 
-            <View style={styles.itemActions}>
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation();
-                  setEditingItem(item);
-                }}
-                disabled={isDisabled}
-                accessibilityRole="button"
-                accessibilityLabel={`Editar ${item.product.name}`}
-                style={styles.actionButton}
-                hitSlop={8}
-              >
-                <Ionicons
-                  name="create-outline"
-                  size={22}
-                  color={COLORS.primary}
-                />
-              </Pressable>
+            {list?.status === "ACTIVE" && (
+              <View style={styles.itemActions}>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    setEditingItem(item);
+                  }}
+                  disabled={isDisabled}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${item.product.name}`}
+                  style={styles.actionButton}
+                >
+                  <Ionicons
+                    name="create-outline"
+                    size={22}
+                    color={COLORS.primary}
+                  />
+                </Pressable>
 
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation();
-                  handleDeleteItem(item);
-                }}
-                disabled={isDisabled}
-                accessibilityRole="button"
-                accessibilityLabel={`Remover ${item.product.name}`}
-                style={styles.actionButton}
-                hitSlop={8}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color="#DC2626" />
-                ) : (
-                  <Ionicons name="trash-outline" size={22} color="#DC2626" />
-                )}
-              </Pressable>
-            </View>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    handleDeleteItem(item);
+                  }}
+                  disabled={isDisabled}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remover ${item.product.name}`}
+                  style={styles.actionButton}
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <Ionicons name="trash-outline" size={22} color="#DC2626" />
+                  )}
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
       </Pressable>
@@ -273,7 +335,38 @@ export default function ShoppingListDetailsScreen() {
         ) : list ? (
           <>
             <View style={styles.summary}>
-              <Text style={styles.listName}>{list.name}</Text>
+              <View style={styles.listNameRow}>
+                <View style={styles.listIconContainer}>
+                  <Ionicons
+                    name={
+                      list.status === "COMPLETED"
+                        ? "checkmark-circle"
+                        : "basket-outline"
+                    }
+                    size={27}
+                    color={COLORS.primary}
+                  />
+                </View>
+
+                <Text style={styles.listName} numberOfLines={2}>
+                  {list.name}
+                </Text>
+
+                {list.status === "ACTIVE" && (
+                  <Pressable
+                    onPress={() => setRenameModalVisible(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Renomear lista"
+                    style={styles.renameButton}
+                  >
+                    <Ionicons
+                      name="create-outline"
+                      size={23}
+                      color={COLORS.primary}
+                    />
+                  </Pressable>
+                )}
+              </View>
 
               <Text style={styles.progressLabel}>
                 {list.checkedItems} de {list.totalItems} produtos comprados
@@ -321,16 +414,82 @@ export default function ShoppingListDetailsScreen() {
             />
 
             {list.status === "ACTIVE" && (
-              <Pressable
-                style={styles.addButton}
-                onPress={() => setAddModalVisible(true)}
-                disabled={checkingItemId !== null || deletingItemId !== null}
-                accessibilityRole="button"
-              >
-                <Ionicons name="add" size={23} color="#FFFFFF" />
+              <>
+                <Pressable
+                  style={styles.addButton}
+                  onPress={() => setAddModalVisible(true)}
+                  disabled={checkingItemId !== null || deletingItemId !== null}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="add" size={23} color="#FFFFFF" />
 
-                <Text style={styles.addButtonText}>Adicionar Produto</Text>
-              </Pressable>
+                  <Text style={styles.addButtonText}>Adicionar Produto</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.completeListButton}
+                  onPress={() => setCompleteModalVisible(true)}
+                  disabled={checkingItemId !== null || deletingItemId !== null}
+                  accessibilityRole="button"
+                  accessibilityLabel="Concluir lista de compras"
+                >
+                  <Ionicons
+                    name="checkmark-done-outline"
+                    size={22}
+                    color={COLORS.primary}
+                  />
+
+                  <Text style={styles.completeListButtonText}>
+                    Concluir Lista
+                  </Text>
+                </Pressable>
+              </>
+            )}
+            {list.status === "COMPLETED" && (
+              <View style={styles.completedActions}>
+                <Pressable
+                  style={styles.completeListButton}
+                  onPress={() => setCompleteModalVisible(true)}
+                  disabled={reopeningList}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver resumo da compra"
+                >
+                  <Ionicons
+                    name="trophy-outline"
+                    size={22}
+                    color={COLORS.primary}
+                  />
+
+                  <Text style={styles.completeListButtonText}>
+                    Ver resumo da compra
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.reopenButton,
+                    reopeningList && styles.reopenButtonDisabled,
+                  ]}
+                  onPress={handleReopenList}
+                  disabled={reopeningList}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reabrir lista de compras"
+                >
+                  {reopeningList ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="refresh-outline"
+                        size={22}
+                        color="#FFFFFF"
+                      />
+
+                      <Text style={styles.reopenButtonText}>Reabrir Lista</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
             )}
           </>
         ) : null}
@@ -350,6 +509,25 @@ export default function ShoppingListDetailsScreen() {
         onClose={() => setEditingItem(null)}
         onUpdated={() => void loadDetails(false)}
       />
+
+      {list && (
+        <RenameShoppingListModal
+          visible={renameModalVisible}
+          listId={list.id}
+          currentName={list.name}
+          onClose={() => setRenameModalVisible(false)}
+          onRenamed={() => void loadDetails(false)}
+        />
+      )}
+
+      {list && (
+        <CompleteShoppingListModal
+          visible={completeModalVisible}
+          list={list}
+          onClose={() => setCompleteModalVisible(false)}
+          onCompleted={() => void loadDetails(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -371,7 +549,6 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 20,
   },
-  listName: { fontSize: 24, fontWeight: "700", color: "#111827" },
   progressLabel: { fontSize: 14, color: "#6B7280", marginTop: 10 },
   progressBackground: {
     height: 8,
@@ -463,5 +640,73 @@ const styles = StyleSheet.create({
     padding: 4,
     alignItems: "center",
     justifyContent: "center",
+  },
+  listNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  listName: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  renameButton: {
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  completeListButton: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+
+  completeListButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  listIconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 15,
+    backgroundColor: "#E9F8F1",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 14,
+  },
+  completedActions: {
+    gap: 10,
+    marginBottom: 12,
+  },
+
+  reopenButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    minHeight: 52,
+  },
+
+  reopenButtonDisabled: {
+    opacity: 0.6,
+  },
+
+  reopenButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
