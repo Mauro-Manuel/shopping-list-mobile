@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import { getProducts } from "../../services/product.service";
-import { getCategories } from "../../services/category.service";
+import {
+  getCategories,
+  createCategory,
+  deleteCategory,
+  updateCategory,
+} from "../../services/category.service";
 import {
   addShoppingItem,
   ShoppingItemConflictError,
@@ -37,16 +42,32 @@ type ProductMode = "existing" | "new";
 
 const PAGE_SIZE = 20;
 
+const CATEGORY_ICONS = [
+  "🛒",
+  "🍎",
+  "🥤",
+  "🥩",
+  "🥦",
+  "🍞",
+  "🧹",
+  "🧴",
+  "💊",
+  "👶",
+  "🐶",
+  "🏠",
+  "👕",
+  "📦",
+];
+
 export default function AddShoppingItemModal({
   visible,
   listId,
   onClose,
   onAdded,
 }: Props) {
-  // Product mode
   const [productMode, setProductMode] = useState<ProductMode>("existing");
 
-  // Existing products
+  // Produtos existentes
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -61,23 +82,50 @@ export default function AddShoppingItemModal({
   const [hasMore, setHasMore] = useState(false);
   const [productReload, setProductReload] = useState(0);
 
-  // New product
+  // Novo produto
   const [newProductName, setNewProductName] = useState("");
+
+  // Categorias
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     null,
   );
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(
+    null,
+  );
+
+  const [updatingCategory, setUpdatingCategory] = useState(false);
 
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [categoryReload, setCategoryReload] = useState(0);
 
-  // Shared fields
+  // Selector de categorias
+  const [categorySelectOpen, setCategorySelectOpen] = useState(false);
+
+  // Nova categoria
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState("🛒");
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(
+    null,
+  );
+
+  // Campos partilhados
   const [quantity, setQuantity] = useState("1");
   const [selectedUnit, setSelectedUnit] = useState<Unit>("UNIT");
   const [saving, setSaving] = useState(false);
 
-  // Reset form whenever modal opens
+  const loadingMoreRef = useRef(false);
+
+  const busy =
+    saving || savingCategory || updatingCategory || deletingCategoryId !== null;
+
+  const selectedCategory =
+    categories.find((category) => category.id === selectedCategoryId) ?? null;
+
+  // Reiniciar formulário
   useEffect(() => {
     if (!visible) return;
 
@@ -96,11 +144,18 @@ export default function AddShoppingItemModal({
     setSelectedCategoryId(null);
     setCategoriesError(null);
 
+    setCategorySelectOpen(false);
+    setShowCreateCategory(false);
+    setNewCategoryName("");
+    setNewCategoryIcon("🛒");
+
     setQuantity("1");
     setSelectedUnit("UNIT");
+    setEditingCategoryId(null);
+    setUpdatingCategory(false);
   }, [visible]);
 
-  // Search debounce
+  // Debounce da pesquisa
   useEffect(() => {
     if (!visible) return;
 
@@ -113,7 +168,7 @@ export default function AddShoppingItemModal({
 
   const searchPending = search.trim() !== debouncedSearch;
 
-  // Load existing products
+  // Carregar produtos existentes
   useEffect(() => {
     if (!visible || productMode !== "existing") return;
 
@@ -156,11 +211,19 @@ export default function AddShoppingItemModal({
     };
   }, [visible, productMode, debouncedSearch, productReload]);
 
-  // Load more products
+  // Paginação dos produtos
   async function loadMoreProducts() {
-    if (loadingProducts || loadingMore || !hasMore || searchPending) {
+    if (
+      loadingProducts ||
+      loadingMoreRef.current ||
+      !hasMore ||
+      searchPending ||
+      busy
+    ) {
       return;
     }
+
+    loadingMoreRef.current = true;
 
     const nextPage = page + 1;
     const currentSearch = debouncedSearch;
@@ -170,7 +233,6 @@ export default function AddShoppingItemModal({
 
       const response = await getProducts(nextPage, PAGE_SIZE, currentSearch);
 
-      // Ignore a page fetched for a previous search.
       if (currentSearch !== search.trim()) return;
 
       setProducts((current) => {
@@ -190,11 +252,12 @@ export default function AddShoppingItemModal({
 
       Alert.alert("Erro", "Não foi possível carregar mais produtos.");
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }
 
-  // Load categories only when creating a new product
+  // Carregar categorias
   useEffect(() => {
     if (!visible || productMode !== "new") return;
 
@@ -231,15 +294,17 @@ export default function AddShoppingItemModal({
   }, [visible, productMode, categoryReload]);
 
   function closeModal() {
-    if (saving) return;
+    if (busy) return;
 
     onClose();
   }
 
   function changeMode(mode: ProductMode) {
-    if (saving) return;
+    if (busy) return;
 
     setProductMode(mode);
+    setCategorySelectOpen(false);
+    setShowCreateCategory(false);
   }
 
   function handleSearchChange(value: string) {
@@ -247,8 +312,120 @@ export default function AddShoppingItemModal({
     setSelectedProduct(null);
   }
 
+  // Seleccionar categoria
+  function handleSelectCategory(category: Category) {
+    if (busy) return;
+
+    setSelectedCategoryId(category.id);
+    setCategorySelectOpen(false);
+    setShowCreateCategory(false);
+  }
+
+  // Abrir formulário de categoria
+  function handleOpenCreateCategory() {
+    if (busy) return;
+
+    setEditingCategoryId(null);
+    setNewCategoryName("");
+    setNewCategoryIcon("🛒");
+
+    setCategorySelectOpen(false);
+    setShowCreateCategory(true);
+  }
+
+  function handleEditCategory(category: Category) {
+    if (busy || category.type !== "CUSTOM") {
+      return;
+    }
+
+    setEditingCategoryId(category.id);
+    setNewCategoryName(category.name);
+    setNewCategoryIcon(category.icon || "🛒");
+
+    setCategorySelectOpen(false);
+    setShowCreateCategory(true);
+  }
+
+  function handleCancelCategoryForm() {
+    if (busy) return;
+
+    setShowCreateCategory(false);
+    setEditingCategoryId(null);
+    setNewCategoryName("");
+    setNewCategoryIcon("🛒");
+  }
+
+  // Criar categoria personalizada
+  async function handleCreateCategory() {
+    if (busy) return;
+
+    const name = newCategoryName.trim();
+
+    if (!name) {
+      Alert.alert("Atenção", "Introduz o nome da categoria.");
+      return;
+    }
+
+    if (!newCategoryIcon.trim()) {
+      Alert.alert("Atenção", "Selecciona um ícone para a categoria.");
+      return;
+    }
+
+    try {
+      setSavingCategory(true);
+
+      const createdCategory = await createCategory({
+        name,
+        icon: newCategoryIcon,
+      });
+
+      setCategories((current) => {
+        const withoutDuplicate = current.filter(
+          (category) => category.id !== createdCategory.id,
+        );
+
+        return [...withoutDuplicate, createdCategory].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+      });
+
+      setSelectedCategoryId(createdCategory.id);
+
+      setNewCategoryName("");
+      setNewCategoryIcon("🛒");
+      setShowCreateCategory(false);
+      setCategorySelectOpen(false);
+
+      Alert.alert(
+        "Categoria criada",
+        "A nova categoria foi criada e seleccionada.",
+      );
+    } catch (error) {
+      console.error("Failed to create category:", error);
+
+      if (
+        error instanceof Error &&
+        error.message === "Category already exists"
+      ) {
+        Alert.alert(
+          "Categoria existente",
+          "Já existe uma categoria com este nome.",
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Erro",
+        "Não foi possível criar a categoria. Tenta novamente.",
+      );
+    } finally {
+      setSavingCategory(false);
+    }
+  }
+
+  // Adicionar produto à lista
   async function handleAddProduct() {
-    if (saving) return;
+    if (busy) return;
 
     const parsedQuantity = Number(quantity.trim().replace(",", "."));
 
@@ -257,11 +434,9 @@ export default function AddShoppingItemModal({
       return;
     }
 
-    if (productMode === "existing") {
-      if (!selectedProduct) {
-        Alert.alert("Atenção", "Selecciona um produto.");
-        return;
-      }
+    if (productMode === "existing" && !selectedProduct) {
+      Alert.alert("Atenção", "Selecciona um produto.");
+      return;
     }
 
     if (productMode === "new") {
@@ -323,6 +498,143 @@ export default function AddShoppingItemModal({
     }
   }
 
+  function handleDeleteCategory(category: Category) {
+    if (busy || category.type !== "CUSTOM") {
+      return;
+    }
+
+    Alert.alert(
+      "Eliminar Categoria",
+      `Queres eliminar a categoria "${category.name}"?\n\n` +
+        "Os produtos associados serão transferidos automaticamente " +
+        'para a categoria "Outros". Nenhum produto será eliminado.',
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => {
+            void confirmDeleteCategory(category.id);
+          },
+        },
+      ],
+    );
+  }
+
+  async function confirmDeleteCategory(categoryId: number) {
+    if (busy) return;
+
+    try {
+      setDeletingCategoryId(categoryId);
+
+      await deleteCategory(categoryId);
+
+      // Actualizar categorias após eliminar.
+      const updatedCategories = await getCategories();
+
+      setCategories(updatedCategories);
+
+      // Limpar a selecção, caso a categoria
+      // eliminada estivesse seleccionada.
+      setSelectedCategoryId((current) =>
+        current === categoryId ? null : current,
+      );
+
+      Alert.alert(
+        "Categoria eliminada",
+        'A categoria foi eliminada. Os produtos associados passaram para "Outros".',
+      );
+    } catch (error) {
+      console.error("Failed to delete category:", error);
+
+      // Recarregar categorias mesmo que a actualização
+      // posterior tenha falhado.
+      setCategoryReload((current) => current + 1);
+
+      Alert.alert(
+        "Erro",
+        "Não foi possível confirmar a eliminação da categoria. " +
+          "Verifica a lista e tenta novamente, se necessário.",
+      );
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  }
+
+  async function handleUpdateCategory() {
+    if (busy || editingCategoryId === null) {
+      return;
+    }
+
+    const name = newCategoryName.trim();
+    const icon = newCategoryIcon.trim();
+    const categoryId = editingCategoryId;
+
+    if (!name) {
+      Alert.alert("Atenção", "Introduz o nome da categoria.");
+      return;
+    }
+
+    if (!icon) {
+      Alert.alert("Atenção", "Selecciona um ícone.");
+      return;
+    }
+
+    try {
+      setUpdatingCategory(true);
+
+      await updateCategory(categoryId, {
+        name,
+        icon,
+      });
+
+      // A API é a fonte de verdade.
+      // Recarregar garante os dados actualizados.
+      const updatedCategories = await getCategories();
+
+      setCategories(updatedCategories);
+
+      setShowCreateCategory(false);
+      setEditingCategoryId(null);
+      setNewCategoryName("");
+      setNewCategoryIcon("🛒");
+
+      Alert.alert(
+        "Categoria actualizada",
+        "As alterações foram guardadas com sucesso.",
+      );
+    } catch (error) {
+      console.error("Failed to update category:", error);
+
+      if (
+        error instanceof Error &&
+        error.message === "Category already exists"
+      ) {
+        Alert.alert(
+          "Categoria existente",
+          "Já existe uma categoria com este nome.",
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Erro",
+        "Não foi possível concluir a actualização. " +
+          "Verifica os dados da categoria e tenta novamente.",
+      );
+
+      // Actualizar a lista, caso o PUT tenha sido
+      // concluído mas a consulta seguinte tenha falhado.
+      setCategoryReload((current) => current + 1);
+    } finally {
+      setUpdatingCategory(false);
+    }
+  }
+
+  // Produtos existentes
   function renderExistingProducts() {
     return (
       <>
@@ -339,13 +651,13 @@ export default function AddShoppingItemModal({
             onChangeText={handleSearchChange}
             autoCapitalize="none"
             autoCorrect={false}
-            editable={!saving}
+            editable={!busy}
           />
 
           {search.length > 0 && (
             <Pressable
               onPress={() => handleSearchChange("")}
-              disabled={saving}
+              disabled={busy}
               accessibilityLabel="Limpar pesquisa"
             >
               <Ionicons name="close-circle" size={20} color="#9CA3AF" />
@@ -357,7 +669,6 @@ export default function AddShoppingItemModal({
           {loadingProducts || searchPending ? (
             <View style={styles.center}>
               <ActivityIndicator color={COLORS.primary} />
-
               <Text style={styles.hint}>A pesquisar produtos...</Text>
             </View>
           ) : productsError ? (
@@ -395,11 +706,9 @@ export default function AddShoppingItemModal({
                         selected && styles.selectedRow,
                       ]}
                       onPress={() => setSelectedProduct(product)}
-                      disabled={saving}
+                      disabled={busy}
                       accessibilityRole="radio"
-                      accessibilityState={{
-                        selected,
-                      }}
+                      accessibilityState={{ selected }}
                     >
                       <View style={styles.productInfo}>
                         <Text style={styles.productName}>{product.name}</Text>
@@ -423,7 +732,7 @@ export default function AddShoppingItemModal({
                 <Pressable
                   style={styles.loadMoreButton}
                   onPress={() => void loadMoreProducts()}
-                  disabled={loadingMore || saving}
+                  disabled={loadingMore || busy}
                 >
                   {loadingMore ? (
                     <ActivityIndicator color={COLORS.primary} />
@@ -439,6 +748,290 @@ export default function AddShoppingItemModal({
     );
   }
 
+  // Select de categorias
+  function renderCategorySelect() {
+    if (loadingCategories) {
+      return (
+        <View style={styles.categoryLoading}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.hint}>A carregar categorias...</Text>
+        </View>
+      );
+    }
+
+    if (categoriesError) {
+      return (
+        <View style={styles.categoryLoading}>
+          <Text style={styles.hint}>{categoriesError}</Text>
+
+          <Pressable
+            onPress={() => setCategoryReload((current) => current + 1)}
+          >
+            <Text style={styles.linkText}>Tentar novamente</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        <Pressable
+          style={[
+            styles.selectButton,
+            categorySelectOpen && styles.selectButtonOpen,
+          ]}
+          onPress={() => setCategorySelectOpen((current) => !current)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel="Seleccionar categoria"
+          accessibilityState={{
+            expanded: categorySelectOpen,
+          }}
+        >
+          <View style={styles.selectValue}>
+            {selectedCategory?.icon ? (
+              <Text style={styles.categoryEmoji}>{selectedCategory.icon}</Text>
+            ) : (
+              <Ionicons name="grid-outline" size={20} color="#9CA3AF" />
+            )}
+
+            <Text
+              style={[
+                styles.selectText,
+                !selectedCategory && styles.selectPlaceholder,
+              ]}
+              numberOfLines={1}
+            >
+              {selectedCategory?.name ?? "Selecciona uma categoria"}
+            </Text>
+          </View>
+
+          <Ionicons
+            name={categorySelectOpen ? "chevron-up" : "chevron-down"}
+            size={20}
+            color="#6B7280"
+          />
+        </Pressable>
+
+        {categorySelectOpen && (
+          <View style={styles.dropdown}>
+            <ScrollView
+              style={styles.dropdownScroll}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {categories.length === 0 ? (
+                <Text style={styles.dropdownEmpty}>
+                  Ainda não existem categorias.
+                </Text>
+              ) : (
+                categories.map((category) => {
+                  const selected = selectedCategoryId === category.id;
+                  const isCustom = category.type === "CUSTOM";
+                  const isDeleting = deletingCategoryId === category.id;
+
+                  return (
+                    <View
+                      key={category.id}
+                      style={[
+                        styles.dropdownOption,
+                        selected && styles.selectedRow,
+                      ]}
+                    >
+                      {/* Seleccionar categoria */}
+                      <Pressable
+                        style={styles.categorySelectAction}
+                        onPress={() => handleSelectCategory(category)}
+                        disabled={busy}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                      >
+                        <Text style={styles.categoryEmoji}>
+                          {category.icon || "📦"}
+                        </Text>
+
+                        <Text
+                          style={styles.dropdownOptionText}
+                          numberOfLines={1}
+                        >
+                          {category.name}
+                        </Text>
+
+                        {selected && (
+                          <Ionicons
+                            name="checkmark"
+                            size={20}
+                            color={COLORS.primary}
+                          />
+                        )}
+                      </Pressable>
+
+                      {/* Editar: apenas categorias personalizadas */}
+                      {isCustom && (
+                        <Pressable
+                          style={styles.categoryEditButton}
+                          onPress={() => handleEditCategory(category)}
+                          disabled={busy}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Editar categoria ${category.name}`}
+                        >
+                          <Ionicons
+                            name="create-outline"
+                            size={21}
+                            color={COLORS.primary}
+                          />
+                        </Pressable>
+                      )}
+
+                      {/* Eliminar: apenas categorias personalizadas */}
+                      {isCustom && (
+                        <Pressable
+                          style={styles.categoryDeleteButton}
+                          onPress={() => handleDeleteCategory(category)}
+                          disabled={busy}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Eliminar categoria ${category.name}`}
+                        >
+                          {isDeleting ? (
+                            <ActivityIndicator size="small" color="#DC2626" />
+                          ) : (
+                            <Ionicons
+                              name="trash-outline"
+                              size={21}
+                              color="#DC2626"
+                            />
+                          )}
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        {!showCreateCategory && (
+          <Pressable
+            style={styles.newCategoryLink}
+            onPress={handleOpenCreateCategory}
+            disabled={busy}
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="add-circle-outline"
+              size={20}
+              color={COLORS.primary}
+            />
+
+            <Text style={styles.linkText}>Nova Categoria</Text>
+          </Pressable>
+        )}
+      </>
+    );
+  }
+
+  // Formulário de nova categoria
+  function renderCreateCategory() {
+    if (!showCreateCategory) return null;
+
+    return (
+      <View style={styles.createCategoryCard}>
+        <View style={styles.createCategoryHeader}>
+          <Text style={styles.createCategoryTitle}>
+            {editingCategoryId !== null
+              ? "Editar Categoria"
+              : "Criar Categoria"}
+          </Text>
+
+          <Pressable
+            onPress={handleCancelCategoryForm}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Cancelar criação de categoria"
+          >
+            <Ionicons name="close" size={21} color="#6B7280" />
+          </Pressable>
+        </View>
+
+        <Text style={styles.label}>Nome da categoria</Text>
+
+        <TextInput
+          style={styles.textInput}
+          placeholder="Ex.: Bebidas"
+          placeholderTextColor="#9CA3AF"
+          value={newCategoryName}
+          onChangeText={setNewCategoryName}
+          maxLength={100}
+          autoCapitalize="sentences"
+          editable={!busy}
+        />
+
+        <Text style={styles.label}>Escolhe um ícone</Text>
+
+        <View style={styles.iconGrid}>
+          {CATEGORY_ICONS.map((icon) => {
+            const selected = newCategoryIcon === icon;
+
+            return (
+              <Pressable
+                key={icon}
+                style={[
+                  styles.iconOption,
+                  selected && styles.selectedIconOption,
+                ]}
+                onPress={() => setNewCategoryIcon(icon)}
+                disabled={busy}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Ícone ${icon}`}
+              >
+                <Text style={styles.iconText}>{icon}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Pressable
+          style={[styles.createCategoryButton, busy && styles.disabledButton]}
+          onPress={() => {
+            if (editingCategoryId !== null) {
+              void handleUpdateCategory();
+            } else {
+              void handleCreateCategory();
+            }
+          }}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={
+            editingCategoryId !== null
+              ? "Guardar alterações da categoria"
+              : "Criar categoria"
+          }
+        >
+          {savingCategory || updatingCategory ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons
+                name={editingCategoryId !== null ? "save-outline" : "checkmark"}
+                size={20}
+                color="#FFFFFF"
+              />
+
+              <Text style={styles.addButtonText}>
+                {editingCategoryId !== null
+                  ? "Guardar Alterações"
+                  : "Criar Categoria"}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Novo produto
   function renderNewProduct() {
     return (
       <>
@@ -450,62 +1043,15 @@ export default function AddShoppingItemModal({
           placeholderTextColor="#9CA3AF"
           value={newProductName}
           onChangeText={setNewProductName}
-          editable={!saving}
+          editable={!busy}
           maxLength={100}
           autoCapitalize="sentences"
         />
 
         <Text style={styles.label}>Categoria</Text>
 
-        <View style={styles.categoriesContainer}>
-          {loadingCategories ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={COLORS.primary} />
-              <Text style={styles.hint}>A carregar categorias...</Text>
-            </View>
-          ) : categoriesError ? (
-            <View style={styles.center}>
-              <Text style={styles.hint}>{categoriesError}</Text>
-
-              <Pressable
-                onPress={() => setCategoryReload((current) => current + 1)}
-              >
-                <Text style={styles.linkText}>Tentar novamente</Text>
-              </Pressable>
-            </View>
-          ) : categories.length === 0 ? (
-            <View style={styles.center}>
-              <Text style={styles.hint}>
-                Não existem categorias disponíveis.
-              </Text>
-            </View>
-          ) : (
-            categories.map((category) => {
-              const selected = selectedCategoryId === category.id;
-
-              return (
-                <Pressable
-                  key={category.id}
-                  style={[styles.productRow, selected && styles.selectedRow]}
-                  onPress={() => setSelectedCategoryId(category.id)}
-                  disabled={saving}
-                  accessibilityRole="radio"
-                  accessibilityState={{
-                    selected,
-                  }}
-                >
-                  <Text style={styles.productName}>{category.name}</Text>
-
-                  <Ionicons
-                    name={selected ? "checkmark-circle" : "ellipse-outline"}
-                    size={23}
-                    color={selected ? COLORS.primary : "#9CA3AF"}
-                  />
-                </Pressable>
-              );
-            })
-          )}
-        </View>
+        {renderCategorySelect()}
+        {renderCreateCategory()}
       </>
     );
   }
@@ -527,7 +1073,7 @@ export default function AddShoppingItemModal({
 
             <Pressable
               onPress={closeModal}
-              disabled={saving}
+              disabled={busy}
               accessibilityRole="button"
               accessibilityLabel="Fechar"
             >
@@ -542,7 +1088,7 @@ export default function AddShoppingItemModal({
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
           >
-            {/* Choose product mode */}
+            {/* Modo do produto */}
             <View style={styles.modeRow}>
               <Pressable
                 style={[
@@ -550,7 +1096,7 @@ export default function AddShoppingItemModal({
                   productMode === "existing" && styles.activeMode,
                 ]}
                 onPress={() => changeMode("existing")}
-                disabled={saving}
+                disabled={busy}
               >
                 <Text
                   style={[
@@ -568,7 +1114,7 @@ export default function AddShoppingItemModal({
                   productMode === "new" && styles.activeMode,
                 ]}
                 onPress={() => changeMode("new")}
-                disabled={saving}
+                disabled={busy}
               >
                 <Text
                   style={[
@@ -581,12 +1127,12 @@ export default function AddShoppingItemModal({
               </Pressable>
             </View>
 
-            {/* Product selection */}
+            {/* Produto */}
             {productMode === "existing"
               ? renderExistingProducts()
               : renderNewProduct()}
 
-            {/* Quantity */}
+            {/* Quantidade */}
             <Text style={styles.label}>Quantidade</Text>
 
             <TextInput
@@ -594,12 +1140,12 @@ export default function AddShoppingItemModal({
               value={quantity}
               onChangeText={setQuantity}
               keyboardType="decimal-pad"
-              editable={!saving}
+              editable={!busy}
               selectTextOnFocus
               accessibilityLabel="Quantidade"
             />
 
-            {/* Unit */}
+            {/* Unidade */}
             <Text style={styles.label}>Unidade</Text>
 
             <View style={styles.unitOptions}>
@@ -614,7 +1160,7 @@ export default function AddShoppingItemModal({
                       selected && styles.selectedUnitOption,
                     ]}
                     onPress={() => setSelectedUnit(unit.value)}
-                    disabled={saving}
+                    disabled={busy}
                   >
                     <Text
                       style={[
@@ -629,12 +1175,12 @@ export default function AddShoppingItemModal({
               })}
             </View>
 
-            {/* Submit */}
+            {/* Guardar produto */}
             <Pressable
-              style={[styles.addButton, saving && styles.disabledButton]}
+              style={[styles.addButton, busy && styles.disabledButton]}
               onPress={() => void handleAddProduct()}
               disabled={
-                saving ||
+                busy ||
                 (productMode === "existing" &&
                   (loadingProducts || searchPending || !!productsError)) ||
                 (productMode === "new" &&
@@ -656,7 +1202,7 @@ export default function AddShoppingItemModal({
             <Pressable
               style={styles.cancelButton}
               onPress={closeModal}
-              disabled={saving}
+              disabled={busy}
             >
               <Text style={styles.cancelText}>Cancelar</Text>
             </Pressable>
@@ -769,12 +1315,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
 
-  categoriesContainer: {
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 14,
-    overflow: "hidden",
-    marginBottom: 24,
+  categoryLoading: {
+    paddingVertical: 20,
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 14,
   },
 
   center: {
@@ -844,6 +1389,148 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
 
+  // Select de categorias
+  selectButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    minHeight: 52,
+  },
+
+  selectButtonOpen: {
+    borderColor: COLORS.primary,
+  },
+
+  selectValue: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+
+  selectText: {
+    fontSize: 15,
+    color: "#111827",
+    flex: 1,
+  },
+
+  selectPlaceholder: {
+    color: "#9CA3AF",
+  },
+
+  categoryEmoji: {
+    fontSize: 21,
+  },
+
+  dropdown: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#FFFFFF",
+  },
+
+  dropdownScroll: {
+    maxHeight: 220,
+  },
+
+  dropdownOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+
+  dropdownOptionText: {
+    flex: 1,
+    fontSize: 15,
+    color: "#111827",
+  },
+
+  dropdownEmpty: {
+    padding: 18,
+    textAlign: "center",
+    color: "#6B7280",
+  },
+
+  newCategoryLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+
+  // Nova categoria
+  createCategoryCard: {
+    backgroundColor: "#F8FAF9",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+
+  createCategoryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+
+  createCategoryTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  iconGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 22,
+  },
+
+  iconOption: {
+    width: 47,
+    height: 47,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  selectedIconOption: {
+    borderColor: COLORS.primary,
+    backgroundColor: "#E9F8F1",
+    borderWidth: 2,
+  },
+
+  iconText: {
+    fontSize: 24,
+  },
+
+  createCategoryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 48,
+  },
+
   unitOptions: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -904,5 +1591,28 @@ const styles = StyleSheet.create({
   cancelText: {
     fontSize: 15,
     color: "#6B7280",
+  },
+  categorySelectAction: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 13,
+  },
+
+  categoryDeleteButton: {
+    width: 42,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 6,
+  },
+  categoryEditButton: {
+    width: 42,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 6,
   },
 });
