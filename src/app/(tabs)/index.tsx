@@ -21,6 +21,7 @@ import { getMyProfile } from "../../services/user.service";
 import {
   createShoppingList,
   getShoppingLists,
+  deleteShoppingList,
 } from "../../services/shopping-list.service";
 import type { ShoppingListSummary } from "../../types/shopping-list";
 import { COLORS } from "../../theme/colors";
@@ -37,6 +38,7 @@ export default function HomeScreen() {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [creatingList, setCreatingList] = useState(false);
+  const [deletingListId, setDeletingListId] = useState<number | null>(null);
 
   const loadLists = useCallback(async () => {
     try {
@@ -128,65 +130,143 @@ export default function HomeScreen() {
     }
   }
 
+  function handleDeleteList(listId: number, listName: string) {
+    if (deletingListId !== null) return;
+
+    Alert.alert(
+      "Eliminar Lista",
+      `Tens a certeza de que queres eliminar "${listName}"?\n\nEsta operação não pode ser desfeita.`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => void confirmDeleteList(listId),
+        },
+      ],
+    );
+  }
+
+  async function confirmDeleteList(listId: number) {
+    if (deletingListId !== null) return;
+
+    try {
+      setDeletingListId(listId);
+
+      await deleteShoppingList(listId);
+
+      await loadLists();
+
+      Alert.alert("Lista eliminada", "A lista foi eliminada com sucesso.");
+    } catch (error) {
+      console.error("Failed to delete shopping list:", error);
+
+      Alert.alert(
+        "Erro",
+        "Não foi possível eliminar a lista. Tenta novamente.",
+      );
+    } finally {
+      setDeletingListId(null);
+    }
+  }
+
   function renderList({ item }: { item: ShoppingListSummary }) {
     const progress = Number.isFinite(item.progress)
       ? Math.min(100, Math.max(0, item.progress))
       : 0;
 
+    const isDeleting = deletingListId === item.id;
+
+    function openListDetails() {
+      if (deletingListId !== null) return;
+
+      router.push({
+        pathname: "/(tabs)/shopping-list/[listId]",
+        params: { listId: String(item.id) },
+      });
+    }
+
     return (
-      <Pressable
-        style={styles.listCard}
-        onPress={() =>
-          router.push({
-            pathname: "/(tabs)/shopping-list/[listId]",
-            params: { listId: String(item.id) },
-          })
-        }
-        accessibilityRole="button"
-      >
-        <View style={styles.listHeader}>
-          <View style={styles.listTitleRow}>
-            <View style={styles.listIconContainer}>
-              <Ionicons
-                name={
-                  item.status === "COMPLETED"
-                    ? "checkmark-circle"
-                    : "basket-outline"
-                }
-                size={25}
-                color={COLORS.primary}
-              />
-            </View>
-
-            <View style={styles.listTitleContainer}>
-              <Text style={styles.listName} numberOfLines={2}>
-                {item.name}
-              </Text>
-
-              <Text style={styles.listInfo}>
-                {item.checkedItems} de {item.totalItems} produtos comprados
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-        </View>
-
-        <View style={styles.progressBackground}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
-        </View>
-
-        <View style={styles.listFooter}>
-          <Text style={styles.progressText}>{Math.round(progress)}%</Text>
-          <Text
-            style={[
-              styles.status,
-              item.status === "COMPLETED" && styles.completedStatus,
-            ]}
+      <View style={styles.listCard}>
+        <View style={styles.listCardHeader}>
+          <Pressable
+            style={styles.listCardNavigation}
+            onPress={openListDetails}
+            disabled={deletingListId !== null}
+            accessibilityRole="button"
+            accessibilityLabel={`Abrir lista ${item.name}`}
           >
-            {item.status === "ACTIVE" ? "Em andamento" : "Concluída"}
-          </Text>
+            <View style={styles.listHeader}>
+              <View style={styles.listTitleRow}>
+                <View style={styles.listIconContainer}>
+                  <Ionicons
+                    name={
+                      item.status === "COMPLETED"
+                        ? "checkmark-circle"
+                        : "basket-outline"
+                    }
+                    size={25}
+                    color={COLORS.primary}
+                  />
+                </View>
+
+                <View style={styles.listTitleContainer}>
+                  <Text style={styles.listName} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+
+                  <Text style={styles.listInfo}>
+                    {item.checkedItems} de {item.totalItems} produtos comprados
+                  </Text>
+                </View>
+              </View>
+
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={styles.deleteListButton}
+            onPress={() => handleDeleteList(item.id, item.name)}
+            disabled={deletingListId !== null}
+            accessibilityRole="button"
+            accessibilityLabel={`Eliminar lista ${item.name}`}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#DC2626" />
+            ) : (
+              <Ionicons name="trash-outline" size={22} color="#DC2626" />
+            )}
+          </Pressable>
         </View>
-      </Pressable>
+
+        <Pressable
+          onPress={openListDetails}
+          disabled={deletingListId !== null}
+          accessibilityRole="button"
+          accessibilityLabel={`Ver detalhes da lista ${item.name}`}
+        >
+          <View style={styles.progressBackground}>
+            <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          </View>
+
+          <View style={styles.listFooter}>
+            <Text style={styles.progressText}>{Math.round(progress)}%</Text>
+
+            <Text
+              style={[
+                styles.status,
+                item.status === "COMPLETED" && styles.completedStatus,
+              ]}
+            >
+              {item.status === "ACTIVE" ? "Em andamento" : "Concluída"}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
     );
   }
 
@@ -551,5 +631,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: 14,
+  },
+
+  listCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  listCardNavigation: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  deleteListButton: {
+    width: 42,
+    height: 44,
+    marginLeft: 4,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 12,
   },
 });
