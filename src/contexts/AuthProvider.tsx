@@ -16,6 +16,8 @@ import {
   type AuthContextStatus,
 } from "./auth.context";
 
+import { setUnauthenticatedHandler } from "../services/auth.client";
+
 type LoginCredentials = {
   email: string;
   password: string;
@@ -75,6 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [status, signIn, signOut, retry],
   );
+
+  useEffect(() => {
+    setUnauthenticatedHandler(() => {
+      setStatus("unauthenticated");
+    });
+
+    return () => {
+      setUnauthenticatedHandler(null);
+    };
+  }, []);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

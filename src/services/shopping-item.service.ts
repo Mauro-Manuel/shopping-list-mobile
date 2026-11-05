@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../config/api";
-import { getAuthTokens } from "./auth.storage";
+import { authFetch } from "./auth.client";
 import type { Unit } from "../types/unit";
 
 export type AddShoppingItemRequest = {
@@ -24,28 +24,24 @@ export class ShoppingItemConflictError extends Error {
   }
 }
 
+const SHOPPING_LIST_URL = `${API_BASE_URL}/api/v1/shopping-lists`;
+
+function shoppingItemUrl(listId: number, itemId: number): string {
+  return `${SHOPPING_LIST_URL}/${listId}/items/${itemId}`;
+}
+
 export async function addShoppingItem(
   listId: number,
   request: AddShoppingItemRequest,
 ): Promise<void> {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(request),
+  const response = await authFetch(`${SHOPPING_LIST_URL}/${listId}/items`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
-  );
+    body: JSON.stringify(request),
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");
@@ -73,22 +69,12 @@ export async function checkShoppingItem(
   listId: number,
   itemId: number,
 ): Promise<void> {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}/check`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
-        Accept: "application/json",
-      },
+  const response = await authFetch(`${shoppingItemUrl(listId, itemId)}/check`, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
     },
-  );
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");
@@ -111,18 +97,11 @@ export async function uncheckShoppingItem(
   listId: number,
   itemId: number,
 ): Promise<void> {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}/uncheck`,
+  const response = await authFetch(
+    `${shoppingItemUrl(listId, itemId)}/uncheck`,
     {
       method: "PATCH",
       headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
         Accept: "application/json",
       },
     },
@@ -146,24 +125,14 @@ export async function updateShoppingItem(
   itemId: number,
   request: UpdateShoppingItemRequest,
 ): Promise<void> {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(request),
+  const response = await authFetch(shoppingItemUrl(listId, itemId), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
-  );
+    body: JSON.stringify(request),
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");
@@ -186,22 +155,12 @@ export async function deleteShoppingItem(
   listId: number,
   itemId: number,
 ): Promise<void> {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/shopping-lists/${listId}/items/${itemId}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
-        Accept: "application/json",
-      },
+  const response = await authFetch(shoppingItemUrl(listId, itemId), {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
     },
-  );
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");

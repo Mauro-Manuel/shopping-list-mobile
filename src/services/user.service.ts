@@ -1,18 +1,13 @@
 import { API_BASE_URL } from "../config/api";
-import { getAuthTokens } from "./auth.storage";
+import { authFetch } from "./auth.client";
 import type { UserProfile } from "../types/user";
 
+const USER_PROFILE_URL = `${API_BASE_URL}/api/v1/users/me`;
+
 export async function getMyProfile(): Promise<UserProfile> {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
+  const response = await authFetch(USER_PROFILE_URL, {
     method: "GET",
     headers: {
-      Authorization: `Bearer ${tokens.accessToken}`,
       Accept: "application/json",
     },
   });
@@ -22,7 +17,7 @@ export async function getMyProfile(): Promise<UserProfile> {
   }
 
   if (!response.ok) {
-    throw new Error("Failed to fetch user profile");
+    throw new Error(`Failed to fetch user profile: ${response.status}`);
   }
 
   return response.json();

@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../config/api";
-import { getAuthTokens } from "./auth.storage";
+import { authFetch } from "./auth.client";
 
 import type {
   ShoppingListPage,
@@ -9,24 +9,9 @@ import type {
 
 const SHOPPING_LIST_URL = `${API_BASE_URL}/api/v1/shopping-lists`;
 
-async function getAuthorizationHeaders() {
-  const tokens = await getAuthTokens();
-
-  if (!tokens) {
-    throw new Error("Authentication required");
-  }
-
-  return {
-    Authorization: `Bearer ${tokens.accessToken}`,
-  };
-}
-
 export async function getShoppingLists(): Promise<ShoppingListPage> {
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(SHOPPING_LIST_URL, {
+  const response = await authFetch(SHOPPING_LIST_URL, {
     method: "GET",
-    headers,
   });
 
   if (response.status === 401) {
@@ -43,11 +28,8 @@ export async function getShoppingLists(): Promise<ShoppingListPage> {
 export async function getShoppingListById(
   listId: number,
 ): Promise<ShoppingListDetails> {
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}`, {
+  const response = await authFetch(`${SHOPPING_LIST_URL}/${listId}`, {
     method: "GET",
-    headers,
   });
 
   if (response.status === 401) {
@@ -70,12 +52,9 @@ export async function createShoppingList(
     throw new Error("Shopping list name is required");
   }
 
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(SHOPPING_LIST_URL, {
+  const response = await authFetch(SHOPPING_LIST_URL, {
     method: "POST",
     headers: {
-      ...headers,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -108,16 +87,15 @@ export async function renameShoppingList(
     throw new Error("Shopping list name is required");
   }
 
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}`, {
+  const response = await authFetch(`${SHOPPING_LIST_URL}/${listId}`, {
     method: "PATCH",
     headers: {
-      ...headers,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ name: trimmedName }),
+    body: JSON.stringify({
+      name: trimmedName,
+    }),
   });
 
   if (response.status === 401) {
@@ -138,12 +116,9 @@ export async function renameShoppingList(
 }
 
 export async function completeShoppingList(listId: number): Promise<void> {
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}/complete`, {
+  const response = await authFetch(`${SHOPPING_LIST_URL}/${listId}/complete`, {
     method: "PATCH",
     headers: {
-      ...headers,
       Accept: "application/json",
     },
   });
@@ -162,11 +137,8 @@ export async function completeShoppingList(listId: number): Promise<void> {
 }
 
 export async function reopenShoppingList(listId: number): Promise<void> {
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}/reopen`, {
+  const response = await authFetch(`${SHOPPING_LIST_URL}/${listId}/reopen`, {
     method: "PATCH",
-    headers,
   });
 
   if (response.status === 401) {
@@ -187,11 +159,8 @@ export async function reopenShoppingList(listId: number): Promise<void> {
 }
 
 export async function deleteShoppingList(listId: number): Promise<void> {
-  const headers = await getAuthorizationHeaders();
-
-  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}`, {
+  const response = await authFetch(`${SHOPPING_LIST_URL}/${listId}`, {
     method: "DELETE",
-    headers,
   });
 
   if (response.status === 401) {
