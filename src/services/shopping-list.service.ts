@@ -110,18 +110,15 @@ export async function renameShoppingList(
 
   const headers = await getAuthorizationHeaders();
 
-  const response = await fetch(
-    `${SHOPPING_LIST_URL}/${listId}`,
-    {
-      method: "PATCH",
-      headers: {
-        ...headers,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ name: trimmedName }),
+  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}`, {
+    method: "PATCH",
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+      Accept: "application/json",
     },
-  );
+    body: JSON.stringify({ name: trimmedName }),
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");
@@ -136,28 +133,20 @@ export async function renameShoppingList(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to rename shopping list: ${response.status}`,
-    );
+    throw new Error(`Failed to rename shopping list: ${response.status}`);
   }
 }
 
-
-export async function completeShoppingList(
-  listId: number,
-): Promise<void> {
+export async function completeShoppingList(listId: number): Promise<void> {
   const headers = await getAuthorizationHeaders();
 
-  const response = await fetch(
-    `${SHOPPING_LIST_URL}/${listId}/complete`,
-    {
-      method: "PATCH",
-      headers: {
-        ...headers,
-        Accept: "application/json",
-      },
+  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}/complete`, {
+    method: "PATCH",
+    headers: {
+      ...headers,
+      Accept: "application/json",
     },
-  );
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");
@@ -168,24 +157,17 @@ export async function completeShoppingList(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to complete shopping list: ${response.status}`,
-    );
+    throw new Error(`Failed to complete shopping list: ${response.status}`);
   }
 }
 
-export async function reopenShoppingList(
-  listId: number,
-): Promise<void> {
+export async function reopenShoppingList(listId: number): Promise<void> {
   const headers = await getAuthorizationHeaders();
 
-  const response = await fetch(
-    `${SHOPPING_LIST_URL}/${listId}/reopen`,
-    {
-      method: "PATCH",
-      headers,
-    },
-  );
+  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}/reopen`, {
+    method: "PATCH",
+    headers,
+  });
 
   if (response.status === 401) {
     throw new Error("Unauthorized");
@@ -200,8 +182,31 @@ export async function reopenShoppingList(
   }
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to reopen shopping list: ${response.status}`,
-    );
+    throw new Error(`Failed to reopen shopping list: ${response.status}`);
+  }
+}
+
+export async function deleteShoppingList(listId: number): Promise<void> {
+  const headers = await getAuthorizationHeaders();
+
+  const response = await fetch(`${SHOPPING_LIST_URL}/${listId}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (response.status === 401) {
+    throw new Error("Unauthorized");
+  }
+
+  if (response.status === 404) {
+    throw new Error("Shopping list not found");
+  }
+
+  if (response.status === 409) {
+    throw new Error("Shopping list cannot be deleted");
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to delete shopping list: ${response.status}`);
   }
 }
